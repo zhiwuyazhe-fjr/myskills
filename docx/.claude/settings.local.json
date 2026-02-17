@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(python3 \"C:/Users/Lenovo/Desktop/myskills/docx/ooxml/scripts/unpack.py\":*)"
+    ]
+  }
+}

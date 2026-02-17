@@ -1,1 +1,1 @@
-# Make scripts directory a package for relative imports in tests
+# 使 scripts 目录成为一个包，用于测试中的相对导入

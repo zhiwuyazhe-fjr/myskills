@@ -4,7 +4,6 @@
 - [Technical Guidelines](#technical-guidelines) - Schema compliance rules and validation requirements
 - [Document Content Patterns](#document-content-patterns) - XML patterns for headings, lists, tables, formatting, etc.
 - [Document Library (Python)](#document-library-python) - Recommended approach for OOXML manipulation with automatic infrastructure setup
-- [Tracked Changes (Redlining)](#tracked-changes-redlining) - XML patterns for implementing tracked changes
 
 ## Technical Guidelines
 
@@ -13,10 +12,7 @@
 - **Whitespace**: Add `xml:space='preserve'` to `<w:t>` elements with leading/trailing spaces
 - **Unicode**: Escape characters in ASCII content: `"` becomes `&#8220;`
   - **Character encoding reference**: Curly quotes `""` become `&#8220;&#8221;`, apostrophe `'` becomes `&#8217;`, em-dash `—` becomes `&#8212;`
-- **Tracked changes**: Use `<w:del>` and `<w:ins>` tags with `w:author="Claude"` outside `<w:r>` elements
-  - **Critical**: `<w:ins>` closes with `</w:ins>`, `<w:del>` closes with `</w:del>` - never mix
-  - **RSIDs must be 8-digit hex**: Use values like `00AB1234` (only 0-9, A-F characters)
-  - **trackRevisions placement**: Add `<w:trackRevisions/>` after `<w:proofState>` in settings.xml
+- **RSIDs must be 8-digit hex**: Use values like `00AB1234` (only 0-9, A-F characters)
 - **Images**: Add to `word/media/`, reference in `document.xml`, set dimensions to prevent overflow
 
 ## Document Content Patterns
@@ -265,7 +261,7 @@ When adding content, update these files:
 
 ## Document Library (Python)
 
-Use the Document class from `scripts/document.py` for all tracked changes and comments. It automatically handles infrastructure setup (people.xml, RSIDs, settings.xml, comment files, relationships, content types). Only use direct XML manipulation for complex scenarios not supported by the library.
+Use the Document class from `scripts/document.py` for comments and document editing. It automatically handles infrastructure setup (people.xml, RSIDs, settings.xml, comment files, relationships, content types). Only use direct XML manipulation for complex scenarios not supported by the library.
 
 **Working with Unicode and Entities:**
 - **Searching**: Both entity notation and Unicode characters work - `contains="&#8220;Company"` and `contains="\u201cCompany"` find the same text
@@ -297,146 +293,23 @@ doc = Document('unpacked')
 # Customize author and initials
 doc = Document('unpacked', author="John Doe", initials="JD")
 
-# Enable track revisions mode
-doc = Document('unpacked', track_revisions=True)
-
 # Specify custom RSID (auto-generated if not provided)
 doc = Document('unpacked', rsid="07DC5ECB")
-```
-
-### Creating Tracked Changes
-
-**CRITICAL**: Only mark text that actually changes. Keep ALL unchanged text outside `<w:del>`/`<w:ins>` tags. Marking unchanged text makes edits unprofessional and harder to review.
-
-**Attribute Handling**: The Document class auto-injects attributes (w:id, w:date, w:rsidR, w:rsidDel, w16du:dateUtc, xml:space) into new elements. When preserving unchanged text from the original document, copy the original `<w:r>` element with its existing attributes to maintain document integrity.
-
-**Method Selection Guide**:
-- **Adding your own changes to regular text**: Use `replace_node()` with `<w:del>`/`<w:ins>` tags, or `suggest_deletion()` for removing entire `<w:r>` or `<w:p>` elements
-- **Partially modifying another author's tracked change**: Use `replace_node()` to nest your changes inside their `<w:ins>`/`<w:del>`
-- **Completely rejecting another author's insertion**: Use `revert_insertion()` on the `<w:ins>` element (NOT `suggest_deletion()`)
-- **Completely rejecting another author's deletion**: Use `revert_deletion()` on the `<w:del>` element to restore deleted content using tracked changes
-
-```python
-# Minimal edit - change one word: "The report is monthly" → "The report is quarterly"
-# Original: <w:r w:rsidR="00AB12CD"><w:rPr><w:rFonts w:ascii="Calibri"/></w:rPr><w:t>The report is monthly</w:t></w:r>
-node = doc["word/document.xml"].get_node(tag="w:r", contains="The report is monthly")
-rpr = tags[0].toxml() if (tags := node.getElementsByTagName("w:rPr")) else ""
-replacement = f'<w:r w:rsidR="00AB12CD">{rpr}<w:t>The report is </w:t></w:r><w:del><w:r>{rpr}<w:delText>monthly</w:delText></w:r></w:del><w:ins><w:r>{rpr}<w:t>quarterly</w:t></w:r></w:ins>'
-doc["word/document.xml"].replace_node(node, replacement)
-
-# Minimal edit - change number: "within 30 days" → "within 45 days"
-# Original: <w:r w:rsidR="00XYZ789"><w:rPr><w:rFonts w:ascii="Calibri"/></w:rPr><w:t>within 30 days</w:t></w:r>
-node = doc["word/document.xml"].get_node(tag="w:r", contains="within 30 days")
-rpr = tags[0].toxml() if (tags := node.getElementsByTagName("w:rPr")) else ""
-replacement = f'<w:r w:rsidR="00XYZ789">{rpr}<w:t>within </w:t></w:r><w:del><w:r>{rpr}<w:delText>30</w:delText></w:r></w:del><w:ins><w:r>{rpr}<w:t>45</w:t></w:r></w:ins><w:r w:rsidR="00XYZ789">{rpr}<w:t> days</w:t></w:r>'
-doc["word/document.xml"].replace_node(node, replacement)
-
-# Complete replacement - preserve formatting even when replacing all text
-node = doc["word/document.xml"].get_node(tag="w:r", contains="apple")
-rpr = tags[0].toxml() if (tags := node.getElementsByTagName("w:rPr")) else ""
-replacement = f'<w:del><w:r>{rpr}<w:delText>apple</w:delText></w:r></w:del><w:ins><w:r>{rpr}<w:t>banana orange</w:t></w:r></w:ins>'
-doc["word/document.xml"].replace_node(node, replacement)
-
-# Insert new content (no attributes needed - auto-injected)
-node = doc["word/document.xml"].get_node(tag="w:r", contains="existing text")
-doc["word/document.xml"].insert_after(node, '<w:ins><w:r><w:t>new text</w:t></w:r></w:ins>')
-
-# Partially delete another author's insertion
-# Original: <w:ins w:author="Jane Smith" w:date="..."><w:r><w:t>quarterly financial report</w:t></w:r></w:ins>
-# Goal: Delete only "financial" to make it "quarterly report"
-node = doc["word/document.xml"].get_node(tag="w:ins", attrs={"w:id": "5"})
-# IMPORTANT: Preserve w:author="Jane Smith" on the outer <w:ins> to maintain authorship
-replacement = '''<w:ins w:author="Jane Smith" w:date="2025-01-15T10:00:00Z">
-  <w:r><w:t>quarterly </w:t></w:r>
-  <w:del><w:r><w:delText>financial </w:delText></w:r></w:del>
-  <w:r><w:t>report</w:t></w:r>
-</w:ins>'''
-doc["word/document.xml"].replace_node(node, replacement)
-
-# Change part of another author's insertion
-# Original: <w:ins w:author="Jane Smith"><w:r><w:t>in silence, safe and sound</w:t></w:r></w:ins>
-# Goal: Change "safe and sound" to "soft and unbound"
-node = doc["word/document.xml"].get_node(tag="w:ins", attrs={"w:id": "8"})
-replacement = f'''<w:ins w:author="Jane Smith" w:date="2025-01-15T10:00:00Z">
-  <w:r><w:t>in silence, </w:t></w:r>
-</w:ins>
-<w:ins>
-  <w:r><w:t>soft and unbound</w:t></w:r>
-</w:ins>
-<w:ins w:author="Jane Smith" w:date="2025-01-15T10:00:00Z">
-  <w:del><w:r><w:delText>safe and sound</w:delText></w:r></w:del>
-</w:ins>'''
-doc["word/document.xml"].replace_node(node, replacement)
-
-# Delete entire run (use only when deleting all content; use replace_node for partial deletions)
-node = doc["word/document.xml"].get_node(tag="w:r", contains="text to delete")
-doc["word/document.xml"].suggest_deletion(node)
-
-# Delete entire paragraph (in-place, handles both regular and numbered list paragraphs)
-para = doc["word/document.xml"].get_node(tag="w:p", contains="paragraph to delete")
-doc["word/document.xml"].suggest_deletion(para)
-
-# Add new numbered list item
-target_para = doc["word/document.xml"].get_node(tag="w:p", contains="existing list item")
-pPr = tags[0].toxml() if (tags := target_para.getElementsByTagName("w:pPr")) else ""
-new_item = f'<w:p>{pPr}<w:r><w:t>New item</w:t></w:r></w:p>'
-tracked_para = DocxXMLEditor.suggest_paragraph(new_item)
-doc["word/document.xml"].insert_after(target_para, tracked_para)
-# Optional: add spacing paragraph before content for better visual separation
-# spacing = DocxXMLEditor.suggest_paragraph('<w:p><w:pPr><w:pStyle w:val="ListParagraph"/></w:pPr></w:p>')
-# doc["word/document.xml"].insert_after(target_para, spacing + tracked_para)
 ```
 
 ### Adding Comments
 
 ```python
-# Add comment spanning two existing tracked changes
-# Note: w:id is auto-generated. Only search by w:id if you know it from XML inspection
-start_node = doc["word/document.xml"].get_node(tag="w:del", attrs={"w:id": "1"})
-end_node = doc["word/document.xml"].get_node(tag="w:ins", attrs={"w:id": "2"})
-doc.add_comment(start=start_node, end=end_node, text="Explanation of this change")
-
 # Add comment on a paragraph
 para = doc["word/document.xml"].get_node(tag="w:p", contains="paragraph text")
 doc.add_comment(start=para, end=para, text="Comment on this paragraph")
 
-# Add comment on newly created tracked change
-# First create the tracked change
-node = doc["word/document.xml"].get_node(tag="w:r", contains="old")
-new_nodes = doc["word/document.xml"].replace_node(
-    node,
-    '<w:del><w:r><w:delText>old</w:delText></w:r></w:del><w:ins><w:r><w:t>new</w:t></w:r></w:ins>'
-)
-# Then add comment on the newly created elements
-# new_nodes[0] is the <w:del>, new_nodes[1] is the <w:ins>
-doc.add_comment(start=new_nodes[0], end=new_nodes[1], text="Changed old to new per requirements")
+# Add comment on a specific element
+elem = doc["word/document.xml"].get_node(tag="w:r", contains="text")
+doc.add_comment(start=elem, end=elem, text="Comment on this text")
 
 # Reply to existing comment
 doc.reply_to_comment(parent_comment_id=0, text="I agree with this change")
-```
-
-### Rejecting Tracked Changes
-
-**IMPORTANT**: Use `revert_insertion()` to reject insertions and `revert_deletion()` to restore deletions using tracked changes. Use `suggest_deletion()` only for regular unmarked content.
-
-```python
-# Reject insertion (wraps it in deletion)
-# Use this when another author inserted text that you want to delete
-ins = doc["word/document.xml"].get_node(tag="w:ins", attrs={"w:id": "5"})
-nodes = doc["word/document.xml"].revert_insertion(ins)  # Returns [ins]
-
-# Reject deletion (creates insertion to restore deleted content)
-# Use this when another author deleted text that you want to restore
-del_elem = doc["word/document.xml"].get_node(tag="w:del", attrs={"w:id": "3"})
-nodes = doc["word/document.xml"].revert_deletion(del_elem)  # Returns [del_elem, new_ins]
-
-# Reject all insertions in a paragraph
-para = doc["word/document.xml"].get_node(tag="w:p", contains="paragraph text")
-nodes = doc["word/document.xml"].revert_insertion(para)  # Returns [para]
-
-# Reject all deletions in a paragraph
-para = doc["word/document.xml"].get_node(tag="w:p", contains="paragraph text")
-nodes = doc["word/document.xml"].revert_deletion(para)  # Returns [para]
 ```
 
 ### Inserting Images
@@ -499,7 +372,7 @@ node = doc["word/document.xml"].get_node(tag="w:p", contains="specific text")
 para = doc["word/document.xml"].get_node(tag="w:p", line_number=range(100, 150))
 
 # By attributes
-node = doc["word/document.xml"].get_node(tag="w:del", attrs={"w:id": "1"})
+node = doc["word/document.xml"].get_node(tag="w:p", attrs={"w14:paraId": "12345678"})
 
 # By exact line number (must be line number where tag opens)
 para = doc["word/document.xml"].get_node(tag="w:p", line_number=42)
@@ -539,7 +412,7 @@ parent = node.parentNode
 parent.removeChild(node)
 parent.appendChild(node)  # Move to end
 
-# General document manipulation (without tracked changes)
+# General document manipulation
 old_node = doc["word/document.xml"].get_node(tag="w:p", contains="original text")
 doc["word/document.xml"].replace_node(old_node, "<w:p><w:r><w:t>replacement text</w:t></w:r></w:p>")
 
@@ -549,62 +422,4 @@ nodes = doc["word/document.xml"].insert_after(node, "<w:r><w:t>A</w:t></w:r>")
 nodes = doc["word/document.xml"].insert_after(nodes[-1], "<w:r><w:t>B</w:t></w:r>")
 nodes = doc["word/document.xml"].insert_after(nodes[-1], "<w:r><w:t>C</w:t></w:r>")
 # Results in: original_node, A, B, C
-```
-
-## Tracked Changes (Redlining)
-
-**Use the Document class above for all tracked changes.** The patterns below are for reference when constructing replacement XML strings.
-
-### Validation Rules
-The validator checks that the document text matches the original after reverting Claude's changes. This means:
-- **NEVER modify text inside another author's `<w:ins>` or `<w:del>` tags**
-- **ALWAYS use nested deletions** to remove another author's insertions
-- **Every edit must be properly tracked** with `<w:ins>` or `<w:del>` tags
-
-### Tracked Change Patterns
-
-**CRITICAL RULES**:
-1. Never modify the content inside another author's tracked changes. Always use nested deletions.
-2. **XML Structure**: Always place `<w:del>` and `<w:ins>` at paragraph level containing complete `<w:r>` elements. Never nest inside `<w:r>` elements - this creates invalid XML that breaks document processing.
-
-**Text Insertion:**
-```xml
-<w:ins w:id="1" w:author="Claude" w:date="2025-07-30T23:05:00Z" w16du:dateUtc="2025-07-31T06:05:00Z">
-  <w:r w:rsidR="00792858">
-    <w:t>inserted text</w:t>
-  </w:r>
-</w:ins>
-```
-
-**Text Deletion:**
-```xml
-<w:del w:id="2" w:author="Claude" w:date="2025-07-30T23:05:00Z" w16du:dateUtc="2025-07-31T06:05:00Z">
-  <w:r w:rsidDel="00792858">
-    <w:delText>deleted text</w:delText>
-  </w:r>
-</w:del>
-```
-
-**Deleting Another Author's Insertion (MUST use nested structure):**
-```xml
-<!-- Nest deletion inside the original insertion -->
-<w:ins w:author="Jane Smith" w:id="16">
-  <w:del w:author="Claude" w:id="40">
-    <w:r><w:delText>monthly</w:delText></w:r>
-  </w:del>
-</w:ins>
-<w:ins w:author="Claude" w:id="41">
-  <w:r><w:t>weekly</w:t></w:r>
-</w:ins>
-```
-
-**Restoring Another Author's Deletion:**
-```xml
-<!-- Leave their deletion unchanged, add new insertion after it -->
-<w:del w:author="Jane Smith" w:id="50">
-  <w:r><w:delText>within 30 days</w:delText></w:r>
-</w:del>
-<w:ins w:author="Claude" w:id="51">
-  <w:r><w:t>within 30 days</w:t></w:r>
-</w:ins>
 ```

@@ -1,196 +1,153 @@
 ---
 name: docx
-description: "全面的文档创建、编辑和分析，支持修订追踪、注释、格式保留和文本提取。当Claude需要处理专业文档（.docx文件）时使用： (1) 创建新文档， (2) 修改或编辑内容， (3) 处理修订追踪， (4) 添加注释，或任何其他文档任务"
-license: 专有。LICENSE.txt 包含完整条款
+description: "创建、编辑 Word 文档。支持基于模板生成精美文档、读取文档、修改文档"
 ---
 
-# DOCX 文档创建、编辑和分析
+# DOCX 技能
 
 ## 概述
 
-用户可能要求您创建、编辑或分析 .docx 文件的内容。.docx 文件本质上是一个 ZIP 归档，包含 XML 文件和其他资源，您可以读取或编辑它们。不同的任务有不同的工具和工作流程。
+本技能用于创建、编辑 .docx 文件。
 
-## 工作流程决策树
+## 快速开始
 
-### 读取/分析内容
-使用下方的"文本提取"或"原始 XML 访问"部分
+### 1. 基于模板生成文档（推荐）
 
-### 创建新文档
-使用"创建新 Word 文档"工作流程
+**最简单的方式**：复制 `模板.docx`，然后使用 Python 添加内容：
 
-### 编辑现有文档
-- **自己的文档 + 简单更改**
-  使用"基础 OOXML 编辑"工作流程
-
-- **他人的文档**
-  使用**"修订模式工作流程"**（推荐默认）
-
-- **法律、学术、商业或政府文档**
-  使用**"修订模式工作流程"**（必需）
-
-## 读取和分析内容
-
-### 文本提取
-如果您只需要读取文档的文本内容，应使用 pandoc 将文档转换为 markdown。Pandoc 非常擅长保留文档结构，并且可以显示修订追踪：
-
-```bash
-# 将文档转换为带修订追踪的 markdown
-pandoc --track-changes=all 文档路径.docx -o 输出.md
-# 选项: --track-changes=accept/reject/all
-```
-
-### 原始 XML 访问
-您需要访问原始 XML 来处理：注释、复杂格式、文档结构、嵌入媒体和元数据。对于任何这些功能，您需要解压文档并读取其原始 XML 内容。
-
-#### 解压文件
-`python ooxml/scripts/unpack.py <office文件> <输出目录>`
-
-#### 关键文件结构
-* `word/document.xml` - 主文档内容
-* `word/comments.xml` - document.xml 中引用的注释
-* `word/media/` - 嵌入的图片和媒体文件
-* 修订追踪使用 `<w:ins>`（插入）和 `<w:del>`（删除）标签
-
-## 创建新 Word 文档
-
-从头创建新 Word 文档时，请使用 **docx-js**，它允许您使用 JavaScript/TypeScript 创建 Word 文档。
-
-### 工作流程
-1. **强制 - 阅读整个文件**: 完全从头到尾阅读 [`docx-js.md`](docx-js.md)（约 500 行）。**阅读此文件时切勿设置范围限制。** 在继续创建文档之前，请阅读完整的文件内容以了解详细语法、关键格式规则和最佳实践。
-2. 使用 Document、Paragraph、TextRun 组件创建 JavaScript/TypeScript 文件（您可以假设所有依赖都已安装，如果没有，请参阅下方的依赖部分）
-3. 使用 Packer.toBuffer() 导出为 .docx
-
-## 编辑现有 Word 文档
-
-编辑现有 Word 文档时，请使用 **Document 库**（一个用于 OOXML 操作的 Python 库）。该库自动处理基础设施设置，并提供文档操作方法。对于复杂场景，您可以通过库直接访问底层 DOM。
-
-### 工作流程
-1. **强制 - 阅读整个文件**: 完全从头到尾阅读 [`ooxml.md`](ooxml.md)（约 600 行）。**阅读此文件时切勿设置范围限制。** 阅读完整文件内容以了解 Document 库 API 和直接编辑文档文件的 XML 模式。
-2. 解压文档：`python ooxml/scripts/unpack.py <office文件> <输出目录>`
-3. 使用 Document 库创建并运行 Python 脚本（请参阅 ooxml.md 中的"Document 库"部分）
-4. 打包最终文档：`python ooxml/scripts/pack.py <输入目录> <office文件>`
-
-Document 库为常见操作提供高级方法，并为复杂场景提供直接 DOM 访问。
-
-## 文档审阅的修订模式工作流程
-
-此工作流程允许您在使用 OOXML 实现之前，使用 markdown 规划全面的修订追踪。**关键**：要实现完整的修订追踪，您必须系统地实现所有更改。
-
-**批量策略**：将相关更改分组为 3-10 个更改的批次。这使调试易于管理，同时保持效率。在进行下一步之前测试每个批次。
-
-**原则：最小化、精确的编辑**
-实现修订追踪时，只标记实际更改的文本。重复未更改的文本会使编辑更难审阅，且显得不够专业。将替换分解为：[未更改的文本] + [删除] + [插入] + [未更改的文本]。通过从原始文本中提取 `<w:r>` 元素并重用它来保留未更改文本的原始 RSID。
-
-示例 - 在句子中将"30 天"改为"60 天"：
 ```python
-# 差 - 替换整个句子
-'<w:del><w:r><w:delText>期限为30天。</w:delText></w:r></w:del><w:ins><w:r><w:t>期限为60天。</w:t></w:r></w:ins>'
+from docx import Document
 
-# 好 - 只标记更改的部分，为未更改的文本保留原始 <w:r>
-'<w:r w:rsidR="00AB12CD"><w:t>期限为 </w:t></w:r><w:del><w:r><w:delText>30</w:delText></w:r></w:del><w:ins><w:r><w:t>60</w:t></w:r></w:ins><w:r w:rsidR="00AB12CD"><w:t> 天。</w:t></w:r>'
+# 打开模板
+doc = Document('模板.docx')
+
+# 添加标题
+doc.add_heading('第一章 绪论', level=1)
+doc.add_heading('1.1 研究背景', level=2)
+doc.add_heading('1.1.1 国内研究现状', level=3)
+
+# 添加正文（自动首行缩进）
+para = doc.add_paragraph('正文内容')
+
+# 保存
+doc.save('输出.docx')
 ```
 
-### 修订追踪工作流程
+### 2. 使用 pandoc 转换
 
-1. **获取 markdown 表示**：将文档转换为保留修订追踪的 markdown：
-   ```bash
-   pandoc --track-changes=all 文档路径.docx -o 当前.md
-   ```
-
-2. **识别并分组更改**：审阅文档并识别所有需要的更改，将它们组织成逻辑批次：
-
-   **定位方法**（用于在 XML 中查找更改）：
-   - 章节/标题编号（例如"第 3.2 节"、"第四条"）
-   - 编号的段落标识符
-   - 具有唯一周围文本的 Grep 模式
-   - 文档结构（例如"第一段"、"签名块"）
-   - **不要使用 markdown 行号** - 它们与 XML 结构不对应
-
-   **批次组织**（每批分组 3-10 个相关更改）：
-   - 按章节："第 1 批：第 2 节修正"、"第 2 批：第 5 节更新"
-   - 按类型："第 1 批：日期更正"、"第 2 批：当事人名称更改"
-   - 按复杂性：从简单的文本替换开始，然后处理复杂的结构更改
-   - 按顺序："第 1 批：第 1-3 页"、"第 2 批：第 4-6 页"
-
-3. **阅读文档并解压**：
-   - **强制 - 阅读整个文件**：完全从头到尾阅读 [`ooxml.md`](ooxml.md)（约 600 行）。**阅读此文件时切勿设置范围限制。** 请特别注意"Document 库"和"修订追踪模式"部分。
-   - **解压文档**：`python ooxml/scripts/unpack.py <文件.docx> <目录>`
-   - **记下建议的 RSID**：解压脚本会建议一个用于修订追踪的 RSID。复制此 RSID 用于步骤 4b。
-
-4. **批量实现更改**：将更改按逻辑分组（按章节、按类型或按 proximity），并在单个脚本中一起实现。这种方法：
-   - 使调试更容易（批次越小，越容易隔离错误）
-   - 允许增量进度
-   - 保持效率（3-10 个更改的批次效果很好）
-
-   **建议的批次分组：**
-   - 按文档章节（例如"第 3 节更改"、"定义"、"终止条款"）
-   - 按更改类型（例如"日期更改"、"当事人名称更新"、"法律术语替换"）
-   - 按 proximity（例如"第 1-3 页的更改"、"文档前半部分的更改"）
-
-   对于每批相关更改：
-
-   **a. 将文本映射到 XML**：在 `word/document.xml` 中 grep 文本，以验证文本如何拆分到 `<w:r>` 元素中。
-
-   **b. 创建并运行脚本**：使用 `get_node` 查找节点，实现更改，然后调用 `doc.save()`。请参阅 ooxml.md 中的**"Document 库"**部分获取模式。
-
-   **注意**：在编写脚本之前，始终立即 grep `word/document.xml` 以获取当前行号并验证文本内容。行号在每次脚本运行后都会更改。
-
-5. **打包文档**：所有批次完成后，将解压的目录转换回 .docx：
-   ```bash
-   python ooxml/scripts/pack.py 解压的 审阅后的文档.docx
-   ```
-
-6. **最终验证**：对完整文档进行综合检查：
-   - 将最终文档转换为 markdown：
-     ```bash
-     pandoc --track-changes=all 审阅后的文档.docx -o 验证.md
-     ```
-   - 验证所有更改都已正确应用：
-     ```bash
-     grep "原始短语" 验证.md  # 不应该找到它
-     grep "替换短语" 验证.md  # 应该找到它
-     ```
-   - 检查没有引入意外的更改
-
-## 将文档转换为图片
-
-要可视化分析 Word 文档，请使用两步流程将它们转换为图片：
-
-1. **将 DOCX 转换为 PDF**：
-   ```bash
-   soffice --headless --convert-to pdf 文档.docx
-   ```
-
-2. **将 PDF 页面转换为 JPEG 图片**：
-   ```bash
-   pdftoppm -jpeg -r 150 文档.pdf 页面
-   ```
-   这将创建 `page-1.jpg`、`page-2.jpg` 等文件。
-
-选项：
-- `-r 150`：设置分辨率为 150 DPI（根据质量/大小平衡调整）
-- `-jpeg`：输出 JPEG 格式（如果更喜欢 PNG，可使用 `-png`）
-- `-f N`：要转换的第一页（例如 `-f 2` 从第 2 页开始）
-- `-l N`：要转换的最后一页（例如 `-l 5` 在第 5 页停止）
-- `page`：输出文件的前缀
-
-特定范围的示例：
 ```bash
-pdftoppm -jpeg -r 150 -f 2 -l 5 文档.pdf 页面  # 仅转换第 2-5 页
+# 从 Markdown/HTML/txt 生成
+pandoc 输入文件.md -o 输出.docx
+pandoc 输入文件.txt -o 输出.docx
+
+# 读取文档内容
+pandoc 文档.docx -o 输出.md
 ```
 
-## 代码风格准则
-**重要**：生成 DOCX 操作代码时：
-- 编写简洁的代码
-- 避免冗长的变量名和冗余操作
-- 避免不必要的 print 语句
+## 模板格式说明
 
-## 依赖项
+### 样式结构
 
-所需依赖项（如果不可用，请安装）：
+| 样式 | 用途 | 编号格式 |
+|------|------|----------|
+| heading 1 (styleId=1) | 一级标题（章） | 第X章 |
+| heading 2 (styleId=2) | 二级标题（节） | X.Y |
+| heading 3 (styleId=3) | 三级标题（小节） | X.Y.Z |
+| 正文1 (styleId=10) | 正文段落 | 首行缩进2字符 |
 
-- **pandoc**：`sudo apt-get install pandoc`（用于文本提取）
-- **docx**：`npm install -g docx`（用于创建新文档）
-- **LibreOffice**：`sudo apt-get install libreoffice`（用于 PDF 转换）
-- **Poppler**：`sudo apt-get install poppler-utils`（用于 pdftoppm 将 PDF 转换为图片）
-- **defusedxml**：`pip install defusedxml`（用于安全的 XML 解析）
+### 字体格式
+
+- **一级标题**: 黑体，32pt，居中对齐
+- **二级标题**: 黑体，28pt，左对齐
+- **三级标题**: 黑体，28pt，左对齐
+- **正文**: Times New Roman/宋体，24pt，首行缩进
+
+## 详细用法
+
+### Python（推荐）
+
+安装依赖：
+```bash
+pip install python-docx
+```
+
+完整示例：
+```python
+from docx import Document
+from docx.shared import Pt, Twips
+
+doc = Document('模板.docx')
+
+# 一级标题
+doc.add_heading('第一章 绪论', level=1)
+
+# 二级标题
+doc.add_heading('1.1 研究背景', level=2)
+
+# 三级标题
+doc.add_heading('1.1.1 国内研究现状', level=3)
+
+# 正文（首行缩进）
+para = doc.add_paragraph('正文内容...')
+para.paragraph_format.first_line_indent = Twips(40)
+
+doc.save('输出.docx')
+```
+
+### JavaScript (docx-js)
+
+安装依赖：
+```bash
+npm install docx
+```
+
+完整示例：
+```javascript
+const { Document, Packer, Paragraph, HeadingLevel, AlignmentType, TextRun } = require("docx");
+
+const doc = new Document({
+    sections: [{
+        children: [
+            new Paragraph({
+                text: "第一章 绪论",
+                heading: HeadingLevel.HEADING_1,
+                alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+                children: [new TextRun("正文内容...")],
+                indentation: { firstLineChars: 200 },
+            }),
+        ],
+    }],
+});
+
+Packer.toBuffer(doc).then(buffer => {
+    require('fs').writeFileSync('输出.docx', buffer);
+});
+```
+
+### 修改现有文档
+
+解压文档：
+```bash
+unzip 文档.docx -d unpacked
+```
+
+编辑 `word/document.xml`，然后打包：
+```bash
+zip -r 输出.docx unpacked/*
+```
+
+## 关键文件
+
+- `模板.docx` - 模板文件
+- `scripts/generate_from_template.py` - Python 示例脚本
+- `scripts/generate_docx.js` - JavaScript 示例脚本
+- `docx-js.md` - docx-js 库详细用法
+- `ooxml.md` - 底层 XML 操作参考
+
+## 依赖
+
+- `pandoc` - 格式转换
+- `docx` (npm) - JavaScript 创建文档
+- `python-docx` (pip) - Python 操作文档
