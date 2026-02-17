@@ -16,20 +16,31 @@ from docx.shared import Pt, Cm, Twips, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
+try:
+    # 作为包执行（推荐）：python -m docx.scripts.generate_from_template
+    from .list_formatting import ListItem, add_list_block, extract_heading_number
+except ImportError:  # pragma: no cover
+    # 作为脚本直接执行：python generate_from_template.py
+    from list_formatting import ListItem, add_list_block, extract_heading_number
+
 
 def create_document_from_template():
     """基于模板创建文档"""
 
     # 模板文件路径
-    template_path = Path(__file__).parent.parent / "模板.docx"
+    # 兼容两种常见命名：模板.docx / 模版.docx
+    template_dir = Path(__file__).parent.parent
+    template_path = template_dir / "模板.docx"
+    if not template_path.exists():
+        template_path = template_dir / "模版.docx"
     output_path = Path(__file__).parent.parent / "output.docx"
 
     # 复制模板文件
-    if template_path.exists():
+    if template_path.exists() and template_path.stat().st_size > 0:
         shutil.copy(template_path, output_path)
         doc = Document(output_path)
     else:
-        print("警告：模板文件不存在，创建空白文档")
+        print("警告：模板文件不存在或为空（0 字节），创建空白文档")
         doc = Document()
 
     # 清除现有内容（保留样式）
@@ -126,6 +137,47 @@ def generate_sample_document():
     doc.add_heading('2.1.2 技术实现', level=3)
 
     add_body_text(doc, '技术实现过程中需要注意以下问题：')
+
+    # ==================== 列表示例（按需求优化） ====================
+    # 场景①：只有第一级列表 —— 每项独立段落，首行缩进 2 字符（保持现状）
+    add_body_text(doc, '仅一级列表示例：')
+    add_list_block(
+        doc,
+        [
+            ListItem("面向任务拆解，先列出关键步骤"),
+            ListItem("给每一步补充输入/输出与验收标准"),
+            ListItem("最后整体回顾并压缩表达"),
+        ],
+        current_heading_number=None,
+    )
+
+    doc.add_paragraph()  # 空行
+
+    # 场景②：存在第二级列表 —— 一级自动编号、左对齐、取消首行缩进；二级每项独立段落首行缩进 2 字符
+    heading_text = "4.2 研究方法"
+    doc.add_heading(heading_text, level=2)
+    current_num = extract_heading_number(heading_text)
+    add_body_text(doc, '含二级列表示例：')
+    add_list_block(
+        doc,
+        [
+            ListItem(
+                "数据准备",
+                children=[
+                    "收集并清洗原始数据",
+                    "统一字段口径并补齐缺失值",
+                ],
+            ),
+            ListItem(
+                "模型训练",
+                children=[
+                    "划分训练/验证集并设定评价指标",
+                    "记录参数与实验结果，便于复现",
+                ],
+            ),
+        ],
+        current_heading_number=current_num,
+    )
 
     # 添加图注示例
     doc.add_paragraph()  # 空行
