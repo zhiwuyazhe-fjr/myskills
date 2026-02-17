@@ -1,174 +1,39 @@
 ---
 name: docx
-description: "创建、编辑 Word 文档。支持基于模板生成精美文档、读取文档、修改文档"
+description: 将用户提供的 Markdown 文档或 md 风格纯文本转换为预设中文排版规范的 .docx 文件。用于需要严格控制标题层级样式、正文字体与行距、列表层级编号缩进、加粗与表格渲染的场景。
 ---
 
 # DOCX 技能
 
-## 概述
+## 工作流
 
-本技能用于创建、编辑 .docx 文件。
+1. 读取输入（文件路径或直接给出的 Markdown 文本）。
+2. 按顺序解析结构：标题、列表、表格、正文段落。
+3. 按固定规则渲染为 `.docx`（见 `scripts/docxskill/renderer.py`）。
+4. 返回输出路径，并简要说明已应用的排版规则。
 
-## 快速开始
+## 强制排版规则
 
-### 1. 基于模板生成文档（推荐）
+- 一级标题：黑体、小三（16pt）、加粗、居中、黑色。
+- 二级标题：黑体、四号（14pt）、加粗、左对齐、黑色。
+- 三级标题：黑体、四号（14pt）、加粗、左对齐、黑色。
+- 正文：中文宋体、英文 Times New Roman、小四（12pt）、黑色。
+- 正文段落：固定 20 磅行距，首行缩进 2 个中文字符，段前段后均为 0。
+- 列表规则：
+  - 仅一级列表：每一项作为独立正文段落，首行缩进 2 个中文字符。
+  - 两级及以上列表：除最后一级外，其余各级按层级连续编号；一级列表不首行缩进；二级及以后各级在前一级基础上再缩进 2 个中文字符。
+- 加粗（`**text**` / `__text__`）必须正确渲染。
+- Markdown 表格必须渲染为 Word 表格。
+- 所有文字均为黑色。
 
-**最简单的方式**：复制 `模板.docx`，然后使用 Python 添加内容：
+## 调用入口
 
-```python
-from docx import Document
+- 命令行：`python scripts/md2docx.py -i input.md -o output.docx`
+- 模块方式：`python -m docxskill -i input.md -o output.docx`
+- 核心函数：`scripts/docxskill/convert.py` 中的 `convert_markdown_to_docx()`
 
-# 打开模板
-doc = Document('模板.docx')
+## 优先读取文件
 
-# 添加标题
-doc.add_heading('第一章 绪论', level=1)
-doc.add_heading('1.1 研究背景', level=2)
-doc.add_heading('1.1.1 国内研究现状', level=3)
-
-# 添加正文（自动首行缩进）
-para = doc.add_paragraph('正文内容')
-
-# 保存
-doc.save('输出.docx')
-```
-
-### 2. 使用 pandoc 转换
-
-```bash
-# 从 Markdown/HTML/txt 生成
-pandoc 输入文件.md -o 输出.docx
-pandoc 输入文件.txt -o 输出.docx
-
-# 读取文档内容
-pandoc 文档.docx -o 输出.md
-```
-
-## 模板格式说明
-
-### 样式结构
-
-| 样式 | 用途 | 编号格式 |
-|------|------|----------|
-| heading 1 (styleId=1) | 一级标题（章） | 第X章 |
-| heading 2 (styleId=2) | 二级标题（节） | X.Y |
-| heading 3 (styleId=3) | 三级标题（小节） | X.Y.Z |
-| 正文1 (styleId=10) | 正文段落 | 首行缩进2字符 |
-
-### 列表格式规则（重要）
-
-当内容中出现列表时，按以下规则生成段落（避免“假列表”导致排版混乱）：
-
-#### ① 只有第一级列表（无二级子项）
-
-- 每一项作为**独立段落**
-- 每一项段落设置**首行缩进两个中文字符**
-
-#### ② 存在第二级列表（一级项下有二级子项）
-
-- **第一级列表**：
-  - 根据“当前标题编号”自动生成序号前缀，例如当前标题为 `4.2`，则一级列表项为 `4.2.1 / 4.2.2 ...`；若当前标题为 `4.2.1`，则为 `4.2.1.1 / 4.2.1.2 ...`
-  - **左对齐**
-  - **取消首行缩进**
-- **第二级列表**：
-  - 每一项作为**独立段落**
-  - 每一项段落设置**首行缩进两个中文字符**
-
-仓库内对应的参考实现见：`docx/scripts/list_formatting.py`（`add_list_block`）。
-
-### 字体格式
-
-- **一级标题**: 黑体，32pt，居中对齐
-- **二级标题**: 黑体，28pt，左对齐
-- **三级标题**: 黑体，28pt，左对齐
-- **正文**: Times New Roman/宋体，24pt，首行缩进
-
-## 详细用法
-
-### Python（推荐）
-
-安装依赖：
-```bash
-pip install python-docx
-```
-
-完整示例：
-```python
-from docx import Document
-from docx.shared import Pt, Twips
-
-doc = Document('模板.docx')
-
-# 一级标题
-doc.add_heading('第一章 绪论', level=1)
-
-# 二级标题
-doc.add_heading('1.1 研究背景', level=2)
-
-# 三级标题
-doc.add_heading('1.1.1 国内研究现状', level=3)
-
-# 正文（首行缩进）
-para = doc.add_paragraph('正文内容...')
-para.paragraph_format.first_line_indent = Twips(40)
-
-doc.save('输出.docx')
-```
-
-### JavaScript (docx-js)
-
-安装依赖：
-```bash
-npm install docx
-```
-
-完整示例：
-```javascript
-const { Document, Packer, Paragraph, HeadingLevel, AlignmentType, TextRun } = require("docx");
-
-const doc = new Document({
-    sections: [{
-        children: [
-            new Paragraph({
-                text: "第一章 绪论",
-                heading: HeadingLevel.HEADING_1,
-                alignment: AlignmentType.CENTER,
-            }),
-            new Paragraph({
-                children: [new TextRun("正文内容...")],
-                indentation: { firstLineChars: 200 },
-            }),
-        ],
-    }],
-});
-
-Packer.toBuffer(doc).then(buffer => {
-    require('fs').writeFileSync('输出.docx', buffer);
-});
-```
-
-### 修改现有文档
-
-解压文档：
-```bash
-unzip 文档.docx -d unpacked
-```
-
-编辑 `word/document.xml`，然后打包：
-```bash
-zip -r 输出.docx unpacked/*
-```
-
-## 关键文件
-
-- `模板.docx` - 模板文件
-- `scripts/generate_from_template.py` - Python 示例脚本
-- `scripts/generate_docx.js` - JavaScript 示例脚本
-- `docx-js.md` - docx-js 库详细用法
-- `ooxml.md` - 底层 XML 操作参考
-
-## 依赖
-
-- `pandoc` - 格式转换
-- `docx` (npm) - JavaScript 创建文档
-- `python-docx` (pip) - Python 操作文档
+- `scripts/docxskill/md_parser.py`
+- `scripts/docxskill/renderer.py`
+- `scripts/docxskill/list_formatting.py`
