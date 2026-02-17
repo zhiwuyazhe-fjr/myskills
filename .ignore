@@ -21,6 +21,7 @@ env/
 coverage.xml
 
 # IDE / OS files
+.claude
 .DS_Store
 Thumbs.db
 .idea/
